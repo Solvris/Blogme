@@ -54,6 +54,8 @@ DOMAIN-SUFFIX,gtimg.com
 DOMAIN-SUFFIX,hongxiu.com
 DOMAIN-SUFFIX,hxcdn.net
 DOMAIN-SUFFIX,iciba.com
+DOMAIN-SUFFIX,icloud-content.com
+DOMAIN-SUFFIX,icloud.com.cn
 DOMAIN-SUFFIX,ifeng.com
 DOMAIN-SUFFIX,ifengimg.com
 DOMAIN-SUFFIX,iqiyi.com
@@ -79,6 +81,7 @@ DOMAIN-SUFFIX,meituan.com
 DOMAIN-SUFFIX,meituan.net
 DOMAIN-SUFFIX,mwcloudcdn.com
 DOMAIN-SUFFIX,mwcname.com
+DOMAIN-SUFFIX,mzstatic.com
 DOMAIN-SUFFIX,netease.com
 DOMAIN-SUFFIX,office.com
 DOMAIN-SUFFIX,office365.com
@@ -111,6 +114,8 @@ DOMAIN-SUFFIX,speedtest.net
 DOMAIN-SUFFIX,sspai.com
 DOMAIN-SUFFIX,suning.com
 DOMAIN-SUFFIX,tianyancha.com
+DOMAIN-SUFFIX,time.apple.com
+DOMAIN-SUFFIX,time.windows.com
 DOMAIN-SUFFIX,tmall.com
 DOMAIN-SUFFIX,tudou.com
 DOMAIN-SUFFIX,umetrip.com
@@ -135,10 +140,7 @@ DOMAIN-SUFFIX,zhihu.com
 DOMAIN-SUFFIX,zhimg.com
 DOMAIN-SUFFIX,zimuzu.tv
 DOMAIN-SUFFIX,zoho.com
-DOMAIN-SUFFIX,icloud-content.com
-DOMAIN-SUFFIX,icloud.com.cn
-DOMAIN-SUFFIX,meituan.com
-DOMAIN-SUFFIX,mzstatic.com
+
 #################################
 DOMAIN-KEYWORD,alicdn
 DOMAIN-KEYWORD,alipay
