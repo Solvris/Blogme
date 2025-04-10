@@ -1,8 +1,8 @@
-好的，如果你不需要引入专用用户和 `setcap` 的使用，我们可以简化脚本，去掉这些与安全性相关的改进部分。以下是简化后的脚本版本：
+好的，根据你的需求，我们将启动命令改为 `sing-box run -D $CONFIG_DIR`，其中 `$CONFIG_DIR` 是配置文件所在的目录（例如 `/usr/local/etc/sing-box`）。以下是更新后的脚本。
 
 ---
 
-### 简化版 `/etc/sv/sing-box/run`
+### 更新后的 `/etc/sv/sing-box/run`
 
 ```bash
 #!/bin/sh
@@ -10,8 +10,8 @@
 # === Configuration ===
 # Path to the sing-box executable
 SINGBOX_EXEC="/usr/local/bin/sing-box"
-# Path to the configuration file
-CONFIG_FILE="/usr/local/etc/sing-box/config.json"
+# Directory containing the configuration files
+CONFIG_DIR="/usr/local/etc/sing-box"
 # Optional: Working directory (if needed by sing-box, e.g., for relative paths)
 # Uncomment and set if required:
 # WORKING_DIR="/usr/local/etc/sing-box"
@@ -20,9 +20,9 @@ CONFIG_FILE="/usr/local/etc/sing-box/config.json"
 # Optional: Change to working directory if defined
 [ -n "$WORKING_DIR" ] && cd "$WORKING_DIR"
 
-# Ensure config file exists
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "Error: Config file not found at $CONFIG_FILE"
+# Ensure config directory exists
+if [ ! -d "$CONFIG_DIR" ]; then
+  echo "Error: Config directory not found at $CONFIG_DIR"
   sleep 5 # Prevent rapid restarts by runit if config is missing
   exit 1
 fi
@@ -34,17 +34,19 @@ if [ ! -x "$SINGBOX_EXEC" ]; then
   exit 1
 fi
 
-# Execute sing-box in the foreground as root.
-exec "$SINGBOX_EXEC" run -c "$CONFIG_FILE"
+# Execute sing-box in the foreground with the specified config directory.
+exec "$SINGBOX_EXEC" run -D "$CONFIG_DIR"
 ```
 
 **改动：**
-- 去掉了 `RUN_AS_USER` 和用户权限管理的部分。
-- 直接以 `root` 用户运行 `sing-box`。
+- 将 `CONFIG_FILE` 替换为 `CONFIG_DIR`。
+- 启动命令改为 `sing-box run -D "$CONFIG_DIR"`。
+- 检查配置路径时，改为检查目录是否存在（`-d`）。
 
 ---
 
-### 简化版 `/etc/sv/sing-box/log/run`
+### 日志脚本 `/etc/sv/sing-box/log/run`
+日志脚本不需要更改，仍然可以使用之前的版本：
 
 ```bash
 #!/bin/sh
@@ -59,10 +61,6 @@ mkdir -p "$LOG_DIR"
 # -tt adds timestamps to the log lines.
 exec svlogd -tt "$LOG_DIR"
 ```
-
-**改动：**
-- 去掉了 `SVLOGD_USER` 和用户权限管理的部分。
-- 直接以 `root` 用户运行 `svlogd`。
 
 ---
 
@@ -102,9 +100,9 @@ cat /var/log/sing-box/current
 ---
 
 ### 总结
-通过上述简化：
-1. **去掉了用户权限管理**：脚本直接以 `root` 用户运行 `sing-box` 和 `svlogd`。
-2. **保留了核心功能**：仍然能够启动、停止和监控 `sing-box` 服务。
-3. **减少了复杂性**：适合对安全性要求不高的场景。
+通过上述修改：
+1. **启动命令调整**：将启动命令改为 `sing-box run -D $CONFIG_DIR`，符合你的需求。
+2. **配置目录检查**：脚本现在检查配置目录是否存在，而不是单独的配置文件。
+3. **保持简单性**：脚本逻辑清晰，适合直接以 `root` 用户运行的场景。
 
-如果你未来需要提高安全性，可以随时重新引入用户管理和 `setcap` 的功能。
+如果你未来需要进一步优化或添加功能，可以随时扩展脚本。
