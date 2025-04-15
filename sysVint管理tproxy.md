@@ -8,109 +8,48 @@
 #!/bin/sh
 ### BEGIN INIT INFO
 # Provides:          tproxy
-# Required-Start:    $local_fs $network
-# Required-Stop:     $local_fs $network
+# Required-Start:    $network
+# Required-Stop:     $network
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Start/stop tproxy service
-# Description:       Manages tproxy mode with nftables and routing rules.
+# Short-Description: Start and stop TProxy routing rules
+# Description:       Configures ip rules and nftables for transparent proxying
 ### END INIT INFO
 
-PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-DESC="TPROXY Service"                    # 服务描述
-NAME=tproxy                              # 基础服务名
-SCRIPTNAME=/etc/init.d/$NAME             # 本脚本的路径
-
-# 配置文件路径
-NFTABLES_CONF="/etc/nftables.conf.d/tproxy.nft"
-LOG_FILE="/var/log/${NAME}.log"          # 日志文件路径
-
-# 日志记录函数
-log_message() {
-    local action="$1"
-    local type="$2"
-    local timestamp
-    timestamp=$(date "+%Y-%m-%d %H:%M:%S")
-    shift 2
-    local message="$*"
-    echo "${NAME} ${action} ${timestamp} [${type}] ${message}" >> "$LOG_FILE"
-}
-
-# 启动服务
-do_start() {
-    log_message "start" "INFO" "Starting TPROXY service."
-
-    # 检查 nftables 配置文件是否存在
-    if [ ! -f "$NFTABLES_CONF" ]; then
-        log_message "start" "ERROR" "Configuration file not found: $NFTABLES_CONF"
-        return 1
-    fi
-
-    # 检查并清理残留路由规则
-    local rule_exists=0
-    ip rule show | grep -q "lookup 100" && rule_exists=1
-    if [ $rule_exists -eq 1 ]; then
-        log_message "start" "WARN" "Residual routing rules detected. Cleaning up..."
-        ip rule del fwmark 1 table 100 2>/dev/null || true
-        ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null || true
-    fi
-
-    # 添加路由规则
-    log_message "start" "INFO" "Adding routing rules."
-    ip rule add fwmark 1 table 100 2>/dev/null || true
-    ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null || true
-
-    # 加载 nftables 配置
-    log_message "start" "INFO" "Loading nftables configuration from $NFTABLES_CONF."
-    if ! nft -f "$NFTABLES_CONF"; then
-        log_message "start" "ERROR" "Failed to load nftables configuration. Check syntax in $NFTABLES_CONF."
-        return 1
-    fi
-
-    log_message "start" "INFO" "TPROXY service started successfully."
-    return 0
-}
-
-# 停止服务
-do_stop() {
-    log_message "stop" "INFO" "Stopping TPROXY service."
-
-    # 删除路由规则
-    log_message "stop" "INFO" "Cleaning up routing rules."
-    ip rule del fwmark 1 table 100 2>/dev/null || true
-    ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null || true
-
-    # 删除 nftables 表
-    log_message "stop" "INFO" "Deleting nftables tables."
-    nft delete table ip tproxy4 2>/dev/null || true
-    nft delete table ip6 tproxy6 2>/dev/null || true
-
-    log_message "stop" "INFO" "TPROXY service stopped successfully."
-    return 0
-}
-
-# 主逻辑
 case "$1" in
   start)
-    do_start
-    RETVAL=$?
-    [ $RETVAL -eq 0 ] && log_daemon_msg "Started" "$NAME" || log_failure_msg "Failed to start $NAME"
+    echo "Starting TProxy rules..."
+    ip rule add fwmark 1 table 100 2>/dev/null
+    ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
+    nft -f /etc/nftables.conf.d/tproxy.nft
     ;;
+
   stop)
-    do_stop
-    RETVAL=$?
-    [ $RETVAL -eq 0 ] && log_daemon_msg "Stopped" "$NAME" || log_failure_msg "Failed to stop $NAME"
+    echo "Stopping TProxy rules..."
+    ip rule del fwmark 1 table 100 2>/dev/null
+    ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
+    nft delete table ip tproxy4 2>/dev/null
+    nft delete table ip tproxy6 2>/dev/null
     ;;
-  restart|force-reload)
-    do_stop
+
+  restart)
+    $0 stop
     sleep 1
-    do_start
-    RETVAL=$?
-    [ $RETVAL -eq 0 ] && log_daemon_msg "Restarted" "$NAME" || log_failure_msg "Failed to restart $NAME"
+    $0 start
     ;;
+
+  status)
+    echo "ip rule:"
+    ip rule show | grep table
+    echo "ip route (table 100):"
+    ip route show table 100
+    echo "nftables:"
+    nft list tables | grep tproxy
+    ;;
+
   *)
-    echo "Usage: $SCRIPTNAME {start|stop|restart}" >&2
-    exit 3
+    echo "Usage: /etc/init.d/tproxy {start|stop|restart|status}"
+    exit 1
     ;;
 esac
 
