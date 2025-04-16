@@ -2,10 +2,8 @@
 
 ---
 
-### SysVinit 脚本 (`/etc/init.d/tproxy`)
-
-```bash
 #!/bin/sh
+
 ### BEGIN INIT INFO
 # Provides:          tproxy
 # Required-Start:    $network
@@ -16,39 +14,94 @@
 # Description:       Configures ip rules and nftables for transparent proxying
 ### END INIT INFO
 
+# Load LSB function library
+. /lib/lsb/init-functions
+
+# Configuration variables
+CONFIG_FILE=${TROXY_NFT_CONFIG:-"/etc/nftables.conf.d/tproxy.nft"} # Default path to nftables config file
+
+# Check prerequisites
+command -v ip >/dev/null 2>&1 || { log_failure_msg "'ip' command not found"; exit 1; }
+command -v nft >/dev/null 2>&1 || { log_failure_msg "'nft' command not found"; exit 1; }
+
 case "$1" in
   start)
-    echo "Starting TProxy rules..."
-    ip rule add fwmark 1 table 100 2>/dev/null
-    ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null
-    nft -f /etc/nftables.conf.d/tproxy.nft
+    log_daemon_msg "Starting TProxy rules..."
+
+    # Add IP rule
+    ip rule add fwmark 1 table 100 2>/dev/null || { log_failure_msg "Failed to add ip rule"; exit 1; }
+
+    # Add IP route
+    ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null || { log_failure_msg "Failed to add ip route"; exit 1; }
+
+    # Load nftables configuration
+    if [ -f "$CONFIG_FILE" ]; then
+        nft -f "$CONFIG_FILE" || { log_failure_msg "Failed to load nftables rules from $CONFIG_FILE"; exit 1; }
+    else
+        log_failure_msg "nftables config file $CONFIG_FILE not found"
+        exit 1
+    fi
+
+    log_success_msg "TProxy rules started successfully."
     ;;
 
   stop)
-    echo "Stopping TProxy rules..."
-    ip rule del fwmark 1 table 100 2>/dev/null
-    ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null
-    nft delete table ip tproxy4 2>/dev/null
-    nft delete table ip tproxy6 2>/dev/null
+    log_daemon_msg "Stopping TProxy rules..."
+
+    # Remove IP rule
+    ip rule del fwmark 1 table 100 2>/dev/null || log_warning_msg "Failed to delete ip rule (may already be removed)"
+
+    # Remove IP route
+    ip route del local 0.0.0.0/0 dev lo table 100 2>/dev/null || log_warning_msg "Failed to delete ip route (may already be removed)"
+
+    # Delete nftables tables
+    nft delete table ip tproxy4 2>/dev/null || log_warning_msg "Failed to delete nftables tproxy4 table (may already be removed)"
+    nft delete table ip tproxy6 2>/dev/null || log_warning_msg "Failed to delete nftables tproxy6 table (may already be removed)"
+
+    log_success_msg "TProxy rules stopped successfully."
     ;;
 
   restart)
-    $0 stop
+    log_daemon_msg "Restarting TProxy rules..."
+    $0 stop || { log_failure_msg "Failed to stop TProxy rules"; exit 1; }
     sleep 1
-    $0 start
+    $0 start || { log_failure_msg "Failed to start TProxy rules"; exit 1; }
+    log_success_msg "TProxy rules restarted successfully."
     ;;
 
   status)
-    echo "ip rule:"
-    ip rule show | grep table
-    echo "ip route (table 100):"
-    ip route show table 100
-    echo "nftables:"
-    nft list tables | grep tproxy
+    log_daemon_msg "Checking TProxy rules status..."
+
+    # Check IP rule
+    if ip rule show | grep -q "fwmark 1 table 100"; then
+        log_success_msg "IP rule is active."
+    else
+        log_failure_msg "IP rule is missing or inactive."
+    fi
+
+    # Check IP route
+    if ip route show table 100 | grep -q "local 0.0.0.0/0 dev lo"; then
+        log_success_msg "IP route is active."
+    else
+        log_failure_msg "IP route is missing or inactive."
+    fi
+
+    # Check nftables tables
+    if nft list tables | grep -q "tproxy4"; then
+        log_success_msg "nftables tproxy4 table is active."
+    else
+        log_failure_msg "nftables tproxy4 table is missing or inactive."
+    fi
+
+    if nft list tables | grep -q "tproxy6"; then
+        log_success_msg "nftables tproxy6 table is active."
+    else
+        log_failure_msg "nftables tproxy6 table is missing or inactive."
+    fi
     ;;
 
   *)
-    echo "Usage: /etc/init.d/tproxy {start|stop|restart|status}"
+    echo "Usage: $0 {start|stop|restart|status}"
     exit 1
     ;;
 esac
