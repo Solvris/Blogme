@@ -1,10 +1,10 @@
-以下是完整的 SysVinit 脚本，用于管理 `xray` 服务。该脚本基于之前的讨论进行了优化，移除了对 `/etc/default/$NAME` 的依赖，同时增强了健壮性、安全性和可维护性。
+根据您的需求，我将脚本修改为使用 `_v2ray` 用户运行 Xray 服务，并引入了一个 `USER` 变量来管理用户信息。以下是更新后的 SysVinit 脚本：
 
 ---
 
-### **完整 SysVinit 管理脚本**
+### **更新后的 SysVinit 脚本**
 
-```sh
+```bash
 #!/bin/sh
 
 ### BEGIN INIT INFO
@@ -21,9 +21,10 @@
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 DESC="xray proxy daemon"                # Service description
 NAME=xray                               # Service name
-DAEMON=/usr/local/bin/xray             # Path to the xray binary
+DAEMON=/usr/local/bin/xray              # Path to the xray binary
 CONFIG_FILE=/usr/local/etc/xray/config.json # Path to the config file
-SCRIPTNAME=/etc/init.d/$NAME           # Path to this script
+SCRIPTNAME=/etc/init.d/$NAME            # Path to this script
+USER=_v2ray                             # User to run Xray as
 
 RUN_BASE_DIR=/var/run/xray              # Base directory for PID file
 PIDFILE="$RUN_BASE_DIR/$NAME.pid"       # Path to the PID file
@@ -45,16 +46,19 @@ do_start() {
         mkdir -p "$RUN_BASE_DIR" || { log_failure_msg "Failed to create $RUN_BASE_DIR"; return 1; }
     fi
 
+    # Ensure the runtime directory is owned by the specified user
+    chown "$USER" "$RUN_BASE_DIR" || { log_failure_msg "Failed to set ownership of $RUN_BASE_DIR to $USER"; return 1; }
+
     # Check if already running
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
         log_progress_msg "$DESC is already running."
         return 1 # Already running, return non-zero
     fi
 
-    # Start the daemon using start-stop-daemon
-    log_progress_msg "Starting $DESC process..."
+    # Start the daemon using start-stop-daemon with --chuid
+    log_progress_msg "Starting $DESC process as user '$USER'..."
     start-stop-daemon --start --quiet --pidfile "$PIDFILE" --make-pidfile \
-        --background --exec "$DAEMON" -- $DAEMON_ARGS > /dev/null 2>&1
+        --background --exec "$DAEMON" --chuid "$USER" -- $DAEMON_ARGS > /dev/null 2>&1
     RETVAL=$?
 
     # Give the daemon a moment to potentially fail immediately
@@ -66,7 +70,7 @@ do_start() {
     fi
 
     if [ $RETVAL -eq 0 ]; then
-        log_success_msg "$DESC started successfully."
+        log_success_msg "$DESC started successfully as user '$USER'."
         return 0
     else
         log_failure_msg "Failed to start $DESC (exit code $RETVAL)."
@@ -168,56 +172,63 @@ exit 0
 
 ---
 
-### **主要改进点**
-1. **移除 `/etc/default/$NAME`**：
-   - 删除了对默认环境变量文件的依赖，简化了逻辑。
+### **主要修改点**
 
-2. **返回值逻辑统一**：
-   - 统一返回值逻辑，使 `0` 表示成功，非零表示失败。
+1. **引入 `USER` 变量**
+   - 定义了一个变量 `USER` 来存储运行 Xray 的用户名（默认为 `_v2ray`）：
+     ```bash
+     USER=_v2ray
+     ```
+   - 使用 `$USER` 替代硬编码的 `_v2ray` 用户名。
 
-3. **直接调用守护进程**：
-   - 使用 `--exec` 参数直接调用 `DAEMON`，避免通过 `/bin/bash` 启动子进程。
+2. **设置运行目录权限**
+   - 在 `do_start` 函数中，确保运行目录 `/var/run/xray` 对 `$USER` 用户具有写权限：
+     ```bash
+     chown "$USER" "$RUN_BASE_DIR" || { log_failure_msg "Failed to set ownership of $RUN_BASE_DIR to $USER"; return 1; }
+     ```
 
-4. **增强 PID 文件处理**：
-   - 在检查 PID 文件时，增加对 PID 内容的校验，确保其对应一个有效的进程。
+3. **启动时指定用户**
+   - 使用 `--chuid` 参数让 `start-stop-daemon` 以 `$USER` 用户身份运行 Xray：
+     ```bash
+     start-stop-daemon --start --quiet --pidfile "$PIDFILE" --make-pidfile \
+         --background --exec "$DAEMON" --chuid "$USER" -- $DAEMON_ARGS > /dev/null 2>&1
+     ```
 
-5. **日志输出优化**：
-   - 统一日志输出格式，避免重复或混淆。
+4. **日志输出**
+   - 在启动时明确记录以哪个用户身份运行服务：
+     ```bash
+     log_progress_msg "Starting $DESC process as user '$USER'..."
+     ```
 
-6. **注释完善**：
-   - 为关键逻辑添加详细注释，便于后续维护。
+5. **兼容性**
+   - 如果需要更改运行用户，只需修改 `USER` 变量即可，无需修改其他代码。
 
 ---
 
-### **验证方法**
-1. **安装脚本**：
-   将脚本保存为 `/etc/init.d/xray`，并赋予可执行权限：
-   ```bash
-   sudo cp script.sh /etc/init.d/xray
-   sudo chmod +x /etc/init.d/xray
-   ```
+### **注意事项**
 
-2. **测试功能**：
-   - 启动服务：
+1. **用户权限**
+   - 确保 `_v2ray` 用户已正确创建，并具有运行 Xray 所需的权限。
+   - 如果需要运行特权操作（如绑定端口 < 1024），可以通过 `setcap` 或其他方式赋予 `_v2ray` 特定权限。
+
+2. **配置文件权限**
+   - 确保 `_v2ray` 用户对 `/usr/local/etc/xray` 配置目录具有读取权限：
+     ```bash
+     sudo chown -R _v2ray:_v2ray /usr/local/etc/xray
+     sudo chmod -R 750 /usr/local/etc/xray
+     ```
+
+3. **测试脚本**
+   - 测试脚本功能：
      ```bash
      sudo /etc/init.d/xray start
-     ```
-   - 检查状态：
-     ```bash
      sudo /etc/init.d/xray status
-     ```
-   - 停止服务：
-     ```bash
      sudo /etc/init.d/xray stop
+     sudo /etc/init.d/xray restart
      ```
-
-3. **设置开机自启**：
-   在基于 SysVinit 的系统上，启用开机自启：
-   ```bash
-   sudo update-rc.d xray defaults
-   ```
 
 ---
 
 ### **总结**
-该脚本结构清晰、逻辑健壮，适合直接管理 `xray` 服务。它移除了不必要的复杂性，同时增强了安全性和可维护性。建议在实际部署前进行充分测试，并根据需要调整配置文件路径或其他参数。如果有其他问题或需要进一步的帮助，请随时告诉我！
+
+通过引入 `USER` 变量，脚本变得更加灵活和易于维护。您可以轻松地通过修改 `USER` 变量来更改运行 Xray 的用户，而无需修改其他代码。如果您有任何其他问题或需要进一步调整，请随时告诉我！ 😊
