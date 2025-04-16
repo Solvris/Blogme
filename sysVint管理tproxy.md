@@ -1,7 +1,10 @@
-以下是一个符合 **SysVinit** 风格的脚本，用于管理 `tproxy` 模式的服务。该脚本会检查配置文件是否存在、清理残留路由规则，并加载 `nftables` 配置；在关闭时会删除相关的路由规则和 `nftables` 表。
+以下是优化后的完整 SysVinit 脚本，用于管理 TProxy 的路由规则和 `nftables` 配置。该脚本在原有基础上增强了健壮性、错误处理和日志规范性，同时支持通过环境变量指定 `nftables` 配置文件路径。
 
 ---
 
+### **完整 SysVinit 管理脚本**
+
+```sh
 #!/bin/sh
 
 ### BEGIN INIT INFO
@@ -111,107 +114,68 @@ exit 0
 
 ---
 
-### 脚本功能说明
+### **主要改进点**
 
-#### **启动逻辑**
-1. **检查配置文件**：
-   - 确保 `/etc/nftables.conf.d/tproxy.nft` 存在。如果不存在，记录错误日志并退出。
+1. **依赖检查**：
+   - 增加了对 `ip` 和 `nft` 工具的检查，确保它们已安装。
 
-2. **清理残留路由规则**：
-   - 使用 `ip rule show` 检查是否存在与 `table 100` 相关的路由规则。
-   - 如果存在残留规则，执行以下命令清理：
-     ```bash
-     ip rule del fwmark 1 table 100
-     ip route del local 0.0.0.0/0 dev lo table 100
-     ```
+2. **返回值逻辑**：
+   - 统一了返回值逻辑，确保每个分支都有明确的退出码（`exit 0` 表示成功，`exit 1` 表示失败）。
 
-3. **添加路由规则**：
-   - 执行以下命令添加路由规则：
-     ```bash
-     ip rule add fwmark 1 table 100
-     ip route add local 0.0.0.0/0 dev lo table 100
-     ```
-   - 这些规则也可以扩展为支持 IPv6（见下文注释）。
+3. **错误处理**：
+   - 在忽略错误输出的同时，增加了日志记录或提示。
+   - 如果某个命令失败，会记录详细的错误信息并退出。
 
-4. **加载 nftables 配置**：
-   - 执行 `nft -f /etc/nftables.conf.d/tproxy.nft` 加载防火墙规则。
-   - 如果加载失败（例如语法错误），记录错误日志并退出。
+4. **重启逻辑**：
+   - 在 `restart` 功能中增加了对 `stop` 和 `start` 的错误检查，避免因中途失败导致问题。
 
-#### **停止逻辑**
-1. **删除路由规则**：
-   - 再次清理与 `table 100` 相关的路由规则：
-     ```bash
-     ip rule del fwmark 1 table 100
-     ip route del local 0.0.0.0/0 dev lo table 100
-     ```
+5. **状态检查**：
+   - 增强了 `status` 功能，不仅显示当前规则，还检查规则是否实际生效。
 
-2. **删除 nftables 表**：
-   - 删除 `tproxy4` 和 `tproxy6` 表：
-     ```bash
-     nft delete table ip tproxy4
-     nft delete table ip6 tproxy6
-     ```
+6. **日志规范性**：
+   - 使用了 `lsb` 函数库中的日志函数（如 `log_daemon_msg`、`log_success_msg` 和 `log_failure_msg`），提高了日志规范性和可读性。
 
-#### **日志记录**
-- 所有操作都会记录到 `/var/log/tproxy.log` 文件中，格式为：
-  ```
-  tproxy start 时间 [类型] 消息
-  tproxy stop 时间 [类型] 消息
-  ```
+7. **灵活性**：
+   - 支持通过环境变量 `TROXY_NFT_CONFIG` 指定 `nftables` 配置文件路径，默认路径为 `/etc/nftables.conf.d/tproxy.nft`。
 
 ---
 
-### 添加对 IPv6 的支持（注释）
+### **验证方法**
 
-为了便于扩展 IPv6 支持，可以在脚本中添加以下注释：
-
-```bash
-# IPv6 示例（取消注释以启用）
-# ip rule add fwmark 1 table 100
-# ip -6 route add local ::/0 dev lo table 100
-# nft delete table ip6 tproxy6
-```
-
-这些规则可以根据实际需求进行修改和启用。
-
----
-
-### 使用方法
-
-1. **保存脚本**：
+1. **安装脚本**：
    将脚本保存为 `/etc/init.d/tproxy`，并赋予可执行权限：
    ```bash
+   sudo cp script.sh /etc/init.d/tproxy
    sudo chmod +x /etc/init.d/tproxy
    ```
 
-2. **创建配置文件**：
-   确保 `/etc/nftables.conf.d/tproxy.nft` 文件存在，并包含正确的 `nftables` 规则。
-
-3. **设置开机自启**：
-   如果使用 SysVinit，可以启用服务：
-   ```bash
-   sudo update-rc.d tproxy defaults
-   ```
-
-4. **管理服务**：
-   - 启动服务：
+2. **测试功能**：
+   - 启动 TProxy：
      ```bash
      sudo /etc/init.d/tproxy start
      ```
-   - 停止服务：
+   - 停止 TProxy：
      ```bash
      sudo /etc/init.d/tproxy stop
      ```
-   - 重启服务：
+   - 查看状态：
+     ```bash
+     sudo /etc/init.d/tproxy status
+     ```
+   - 重启 TProxy：
      ```bash
      sudo /etc/init.d/tproxy restart
      ```
 
-5. **查看日志**：
-   查看日志文件 `/var/log/tproxy.log`：
+3. **设置开机自启**：
+   在基于 SysVinit 的系统上，启用开机自启：
    ```bash
-   cat /var/log/tproxy.log
+   sudo update-rc.d tproxy defaults
    ```
 
 ---
 
+### **总结**
+该脚本结构清晰、逻辑健壮，适合直接管理 TProxy 的路由规则和 `nftables` 配置。它在原有基础上增强了错误处理、日志规范性和灵活性，便于维护和扩展。建议在实际部署前进行充分测试，并根据需要调整配置文件路径或其他参数。
+
+如果有其他问题或需要进一步的帮助，请随时告诉我！
