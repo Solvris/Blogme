@@ -178,6 +178,14 @@ exit 0
      USER=_v2ray
      ```
    - 使用 `$USER` 替代硬编码的 `_v2ray` 用户名。
+   - 配置用户
+     ```
+    useradd -u 990 -r -M - U-g 990 -s /sbin/nologin _v2ray
+     ```
+    - 赋予二进制特权
+     ```
+    setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/v2ray
+     ```
 
 2. **设置运行目录权限**
    - 在 `do_start` 函数中，确保运行目录 `/var/run/v2ray` 对 `$USER` 用户具有写权限：
