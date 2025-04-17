@@ -231,3 +231,163 @@ exit 0
 ### **总结**
 
 通过引入 `USER` 变量，脚本变得更加灵活和易于维护。您可以轻松地通过修改 `USER` 变量来更改运行 V2Ray 的用户，而无需修改其他代码。如果您有任何其他问题或需要进一步调整，请随时告诉我！ 😊
+
+
+AppArmor 是一个 Linux 内核安全模块，用于限制程序的权限。它通过定义一组规则（称为 **配置文件**），限制程序可以访问的文件、目录、网络端口等资源，从而增强系统的安全性。对于 V2Ray 这样的服务，可以通过配置 AppArmor 来限制其权限，确保它只能执行必要的操作。
+
+以下是配置 AppArmor 的步骤：
+
+---
+
+### **1. 检查 AppArmor 是否已安装并启用**
+在大多数现代 Linux 发行版（如 Ubuntu）中，AppArmor 默认已安装并启用。你可以通过以下命令检查其状态：
+```bash
+sudo aa-status
+```
+
+输出示例：
+```plaintext
+apparmor module is loaded.
+32 profiles are loaded.
+26 profiles are in enforce mode.
+...
+```
+- 如果 AppArmor 未安装，请根据你的发行版安装它。例如，在基于 Debian/Ubuntu 的系统上：
+  ```bash
+  sudo apt update
+  sudo apt install apparmor apparmor-utils
+  ```
+
+---
+
+### **2. 创建或编辑 AppArmor 配置文件**
+AppArmor 的配置文件通常存储在 `/etc/apparmor.d/` 目录下。每个配置文件对应一个程序或服务。
+
+#### **步骤：**
+1. 创建一个新的 AppArmor 配置文件，例如 `/etc/apparmor.d/usr.local.bin.v2ray`：
+   ```bash
+   sudo nano /etc/apparmor.d/usr.local.bin.v2ray
+   ```
+
+2. 编写配置文件内容。以下是一个适用于 V2Ray 的基本模板：
+   ```plaintext
+   # AppArmor profile for V2Ray
+   # Path to the V2Ray binary
+   /usr/local/bin/v2ray {
+       # Include common rules
+       #include <abstractions/base>
+       #include <abstractions/nameservice>
+
+       # Allow execution of the binary itself
+       /usr/local/bin/v2ray mr,
+
+       # Allow access to configuration files
+       /usr/local/etc/v2ray/** r,
+
+       # Allow logging
+       /var/log/v2ray.log w,
+       /var/log/** rw,
+
+       # Allow network access
+       network inet stream,
+       network inet6 stream,
+
+       # Allow creating TUN devices (if needed)
+       capability net_admin,
+       capability net_raw,
+
+       # Allow read-only access to system directories
+       /etc/ r,
+       /etc/** r,
+
+       # Deny everything else by default
+       deny /** rw,
+   }
+   ```
+
+   **说明：**
+   - `#include <abstractions/base>` 和 `#include <abstractions/nameservice>` 包含了一些常用的规则。
+   - `/usr/local/bin/v2ray mr` 允许执行该二进制文件。
+   - `/usr/local/etc/v2ray/** r` 允许读取 V2Ray 的配置文件。
+   - `network inet stream` 和 `network inet6 stream` 允许访问 IPv4 和 IPv6 网络。
+   - `capability net_admin` 和 `capability net_raw` 允许管理网络设备和创建原始套接字。
+   - `deny /** rw` 拒绝所有其他未明确允许的操作。
+
+3. 保存并退出文件。
+
+---
+
+### **3. 加载并启用 AppArmor 配置文件**
+完成配置文件后，需要加载并启用它。
+
+#### **步骤：**
+1. 解析配置文件语法是否正确：
+   ```bash
+   sudo apparmor_parser -r /etc/apparmor.d/usr.local.bin.v2ray
+   ```
+
+2. 检查配置文件是否已加载：
+   ```bash
+   sudo aa-status
+   ```
+   输出中应该包含 `/usr/local/bin/v2ray`。
+
+3. 设置配置文件为强制模式（enforce mode）：
+   ```bash
+   sudo aa-enforce /etc/apparmor.d/usr.local.bin.v2ray
+   ```
+
+   - 如果需要测试，可以先将配置文件设置为宽容模式（complain mode），这样不会阻止操作，但会记录违规行为：
+     ```bash
+     sudo aa-complain /etc/apparmor.d/usr.local.bin.v2ray
+     ```
+
+4. 查看日志以调试配置文件：
+   ```bash
+   sudo dmesg | grep apparmor
+   ```
+
+---
+
+### **4. 测试和调整配置文件**
+运行 V2Ray 并观察其行为。如果某些操作被阻止，可以在日志中找到相关信息，并根据需要调整配置文件。
+
+#### **常见问题及解决方法：**
+- **V2Ray 无法访问某些文件或目录**：
+  在配置文件中添加相应的路径规则。例如：
+  ```plaintext
+  /path/to/file r,
+  /path/to/directory/** rw,
+  ```
+
+- **V2Ray 无法创建 TUN 设备**：
+  确保配置文件中包含以下内容：
+  ```plaintext
+  capability net_admin,
+  capability net_raw,
+  ```
+
+- **日志中出现 "denied" 错误**：
+  根据日志信息，逐步放宽权限，直到程序正常运行。
+
+---
+
+### **5. 自动启动时应用 AppArmor**
+确保 AppArmor 在系统启动时自动加载配置文件。通常情况下，`apparmor_parser` 会在系统启动时自动加载 `/etc/apparmor.d/` 中的所有配置文件。
+
+如果需要手动加载，可以将以下命令添加到启动脚本中：
+```bash
+sudo apparmor_parser -r /etc/apparmor.d/usr.local.bin.v2ray
+```
+
+---
+
+### **6. 安全建议**
+- **最小化权限**：只授予 V2Ray 必需的权限，避免过度授权。
+- **定期审计**：定期检查 AppArmor 日志，确保没有异常行为。
+- **结合其他安全机制**：可以将 AppArmor 与 Capabilities 或 `systemd` 的 `AmbientCapabilities` 结合使用，进一步提高安全性。
+
+---
+
+### **总结**
+通过配置 AppArmor，可以有效地限制 V2Ray 的权限，防止其访问不必要的资源或执行危险操作。这不仅提高了系统的安全性，还减少了潜在的攻击面。推荐在生产环境中使用 AppArmor，并根据实际需求不断调整和完善配置文件。
