@@ -55,53 +55,54 @@ echo "TProxy 已关闭并清理防火墙规则。"
 以下是一个完整的 `nftables` 配置文件，用于定义 TProxy 的规则。
 
 ```nft
-#!/usr/sbin/nft -f
-# tproxy-nf.nft: 定义 TProxy 的 nftables 规则
-
+#! /usr/sbin/nft
 table ip tproxy4 {
-    # 定义不需要代理的 IP 地址集合
-    set NOT_TPROXY_IP {
-        type ipv4_addr
-        flags interval
-        elements = {
-            10.8.8.0/24,          # LAN 网段
-            192.168.100.0/24,     # 另一个 LAN 网段
-            224.0.0.0/3,          # 多播地址
-            127.0.0.0/8           # 本地回环地址
+        set BROASTCAST_IP {
+                type ipv4_addr
+                flags interval
+                elements = {
+#                    255.255.255.255/32,
+                    224.0.0.0/3,
+                    127.0.0.0/8,
+                    }#此处必须要有wan和lan口的ip
         }
-    }
+        set SELF_IP {
+                type ipv4_addr
+                flags interval
+                elements = {
+                    10.8.8.0/24,
+                    192.168.100.0/24,
+                    }#此处必须要有wan和lan口的ip
+        }
+        chain TPROXY_IN {
+                ip daddr 255.255.255.255 return #低版本nftables不支持把当个地址放在集合里
+                ip daddr @BROADCAST_IP return
+                ip daddr @SELF_IP  th dport != 53 return #如果并不是dns则返回,dns则匹配下一条走代理
+                ip protocol { tcp , udp } meta mark set 0x00000001 tproxy to 127.0.0.1:7893
+        }
 
-    # 入站流量链 (PREROUTING)
-    chain TPROXY_IN {
-        ip daddr 255.255.255.255 return       # 广播地址直接返回
-        ip daddr @NOT_TPROXY_IP return  # 排除指定网段和非 DNS 流量
-        ip protocol udp udp dport 53 return
-        ip protocol tcp tcp dport 53 return
-        ip protocol { tcp, udp } meta mark set 0x00000001 tproxy to 127.0.0.1:7893
-    }
+        chain PREROUTING {
+                type filter hook prerouting priority mangle; policy accept;
+                 ip protocol { tcp , udp } jump TPROXY_IN
+        }
 
-    chain PREROUTING {
-        type filter hook prerouting priority mangle; policy accept;
-        jump TPROXY_IN
-    }
+        chain TPROXY_SELF {
+                ip daddr 255.255.255.255 return
+                ip daddr @BROADCAST_IP return
+                ip daddr @SELF_IP  th dport != 53 return
+                meta mark 0x000000ff return
+                meta mark set 0x00000001
+        }
 
-    # 本机流量链 (OUTPUT)
-    chain TPROXY_SELF {
-        ip daddr 255.255.255.255 return       # 广播地址直接返回
-        ip daddr @NOT_TPROXY_IP return        # 排除指定网段
-        meta mark 0x000000ff return           # 已标记为 255 的流量直接返回
-        meta mark set 0x1                     # 标记流量为 1
-    }
-
-    chain OUTPUT {
-        type route hook output priority mangle; policy accept;
-        ip protocol { tcp, udp } jump TPROXY_SELF
-    }
+        chain OUTPUT {
+                type route hook output priority mangle; policy accept;
+                ip protocol { tcp , udp } jump TPROXY_SELF
+        }
 }
-
 table ip tproxy6 {
-    # IPv6 规则可以根据需要添加
+  
 }
+
 ```
 
 ---
