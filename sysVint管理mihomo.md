@@ -59,21 +59,21 @@ do_start() {
 
     # 检查是否已经在运行
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        log_progress_msg "$DESC is already running."
-        return 0
+        log_warning_msg "$DESC is already running with PID $(cat "$PIDFILE")"
+        return 1 # 已在运行，返回非零值
     fi
 
-    # 启动守护进程 (直接调用 DAEMON)
-    log_progress_msg "Starting $DESC process..."
+    # 启动守护进程
+    log_daemon_msg "Starting $DESC process"
     start-stop-daemon --start --quiet --pidfile "$PIDFILE" --make-pidfile \
         --background --exec "$DAEMON" -- $DAEMON_ARGS > /dev/null 2>&1
     RETVAL=$?
 
     if [ $RETVAL -eq 0 ]; then
-        log_success_msg "$DESC started successfully."
+        log_end_msg 0
         return 0
     else
-        log_failure_msg "Failed to start $DESC (exit code $RETVAL)."
+        log_end_msg 1
         return 1
     fi
 }
@@ -82,12 +82,12 @@ do_start() {
 do_stop() {
     # 检查是否在运行
     if [ ! -f "$PIDFILE" ] || ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        log_progress_msg "$DESC is not running."
-        return 0
+        log_warning_msg "$DESC is not running"
+        return 1 # 未运行，返回非零值
     fi
 
     # 停止守护进程
-    log_progress_msg "Stopping $DESC process..."
+    log_daemon_msg "Stopping $DESC process"
     start-stop-daemon --stop --quiet --retry=TERM/15/KILL/5 --pidfile "$PIDFILE"
     STOP_RETVAL=$?
 
@@ -95,10 +95,10 @@ do_stop() {
     rm -f "$PIDFILE"
 
     if [ $STOP_RETVAL -eq 0 ]; then
-        log_success_msg "$DESC stopped successfully."
+        log_end_msg 0
         return 0
     else
-        log_failure_msg "Failed to stop $DESC (exit code $STOP_RETVAL)."
+        log_end_msg 1
         return 1
     fi
 }
@@ -108,14 +108,14 @@ do_status() {
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
         if ps -p "$PID" > /dev/null 2>&1; then
-            log_success_msg "$DESC is running with PID $PID."
+            log_success_msg "$DESC is running with PID $PID"
             return 0
         else
-            log_warning_msg "$DESC is dead but PID file exists (PID: $PID)."
+            log_warning_msg "$DESC is dead but PID file exists (PID: $PID)"
             return 1
         fi
     else
-        log_warning_msg "$DESC is not running."
+        log_warning_msg "$DESC is not running"
         return 3
     fi
 }
@@ -123,18 +123,16 @@ do_status() {
 ### Main logic ###
 case "$1" in
     start)
-        log_daemon_msg "Starting $DESC ($NAME)..."
         do_start
         ;;
     stop)
-        log_daemon_msg "Stopping $DESC ($NAME)..."
         do_stop
         ;;
     status)
         do_status
         ;;
     restart|force-reload)
-        log_daemon_msg "Restarting $DESC ($NAME)..."
+        log_daemon_msg "Restarting $DESC"
         do_stop
         sleep 1
         do_start
