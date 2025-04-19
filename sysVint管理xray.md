@@ -19,15 +19,15 @@
 
 # Paths and Variables
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-DESC="xray proxy daemon"                # Service description
-NAME=xray                               # Service name
-DAEMON=/usr/local/bin/xray              # Path to the xray binary
+DESC="xray daemon"                # Service description
+NAME=xray                         # Service name
+DAEMON=/usr/local/bin/xray        # Path to the xray binary
 CONFIG_FILE=/usr/local/etc/xray/config.json # Path to the config file
-SCRIPTNAME=/etc/init.d/$NAME            # Path to this script
-USER=_v2ray                             # User to run Xray as
+SCRIPTNAME=/etc/init.d/$NAME      # Path to this script
+USER=_v2ray                       # User to run Xray as
 
-RUN_BASE_DIR=/var/run/xray              # Base directory for PID file
-PIDFILE="$RUN_BASE_DIR/$NAME.pid"       # Path to the PID file
+RUN_BASE_DIR=/var/run/xray        # Base directory for PID file
+PIDFILE="$RUN_BASE_DIR/$NAME.pid" # Path to the PID file
 
 # Xray start arguments
 DAEMON_ARGS="run -c \"$CONFIG_FILE\""
@@ -51,12 +51,12 @@ do_start() {
 
     # Check if already running
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        log_progress_msg "$DESC is already running."
+        log_warning_msg "$DESC is already running with PID $(cat "$PIDFILE")."
         return 1 # Already running, return non-zero
     fi
 
     # Start the daemon using start-stop-daemon with --chuid
-    log_progress_msg "Starting $DESC process as user '$USER'..."
+    log_daemon_msg "Starting $DESC process as user '$USER'"
     start-stop-daemon --start --quiet --pidfile "$PIDFILE" --make-pidfile \
         --background --exec "$DAEMON" --chuid "$USER" -- $DAEMON_ARGS > /dev/null 2>&1
     RETVAL=$?
@@ -70,10 +70,10 @@ do_start() {
     fi
 
     if [ $RETVAL -eq 0 ]; then
-        log_success_msg "$DESC started successfully as user '$USER'."
+        log_end_msg 0
         return 0
     else
-        log_failure_msg "Failed to start $DESC (exit code $RETVAL)."
+        log_end_msg 1
         rm -f "$PIDFILE"
         return 1
     fi
@@ -81,7 +81,7 @@ do_start() {
 
 # Function to stop the service
 do_stop() {
-    log_progress_msg "Stopping $DESC process..."
+    log_daemon_msg "Stopping $DESC process"
     # Use TERM signal first, wait, then KILL if necessary
     start-stop-daemon --stop --quiet --retry=TERM/15/KILL/5 --pidfile "$PIDFILE"
     STOP_RETVAL=$?
@@ -90,11 +90,11 @@ do_stop() {
     case "$STOP_RETVAL" in
         0) # Stop command successful (process stopped or wasn't running)
             rm -f "$PIDFILE"
-            log_success_msg "$DESC stopped successfully."
+            log_end_msg 0
             return 0
             ;;
         1) # Process not found based on PID file
-            log_progress_msg "(Process not found or already stopped)"
+            log_warning_msg "$DESC is not running."
             rm -f "$PIDFILE" # Clean up potentially stale PID file
             return 0
             ;;
@@ -114,11 +114,11 @@ do_status() {
             log_success_msg "$DESC is running with PID $PID."
             return 0
         else
-            log_failure_msg "$DESC is dead but PID file exists (PID: $PID)."
+            log_warning_msg "$DESC is dead but PID file exists (PID: $PID)."
             return 1
         fi
     else
-        log_failure_msg "$DESC is not running."
+        log_warning_msg "$DESC is not running."
         return 3
     fi
 }
@@ -126,26 +126,16 @@ do_status() {
 # --- Main logic ---
 case "$1" in
     start)
-        log_daemon_msg "Starting $DESC ($NAME)..."
         do_start
-        case "$?" in
-            0) log_end_msg 0 ;; # Started successfully
-            1) log_end_msg 1 ;; # Failed to start or already running
-        esac
         ;;
     stop)
-        log_daemon_msg "Stopping $DESC ($NAME)..."
         do_stop
-        case "$?" in
-            0) log_end_msg 0 ;; # Stopped successfully
-            1) log_end_msg 1 ;; # Failed to stop
-        esac
         ;;
     status)
         do_status
         ;;
     restart|force-reload)
-        log_daemon_msg "Restarting $DESC ($NAME)..."
+        log_daemon_msg "Restarting $DESC"
         do_stop
         STOP_STATUS=$?
         if [ $STOP_STATUS -eq 0 ] || [ $STOP_STATUS -eq 1 ]; then
