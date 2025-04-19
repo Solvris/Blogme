@@ -169,7 +169,7 @@ exit 0
      ```
     - 赋予二进制特权
      ```bash
-     setcap cap_net_admin,cap_net_raw+ep /usr/local/bin/v2ray
+     setcap cap_net_admin,cap_net_bind_service,cap_net_raw+ep /usr/local/bin/v2ray
      ```
 
 2. **设置运行目录权限**
