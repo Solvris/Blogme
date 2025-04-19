@@ -21,11 +21,11 @@
 ### END INIT INFO
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-DESC="v2ray daemon"                      # 服务描述
+DESC="V2Ray Daemon"                      # 服务描述
 NAME=v2ray                               # 基础服务名
 DAEMON=/usr/local/bin/v2ray              # v2ray 程序路径
 SCRIPTNAME=/etc/init.d/$NAME             # 本脚本的路径
-USER=_v2ray                              # 运行 V2Ray 的用户
+USER=netadm                              # 运行 V2Ray 的用户
 
 CONFIG_DIR="/usr/local/etc/v2ray"        # 配置文件目录
 RUN_BASE_DIR=/var/run/v2ray              # PID 文件基础目录
@@ -43,7 +43,7 @@ get_daemon_args() {
     elif [ -r "$CONFIG_DIR/config.v5.jsonc" ]; then
         echo "run -c $CONFIG_DIR/config.v5.jsonc --format jsonv5"
     else
-        log_failure_msg "No valid configuration file found in $CONFIG_DIR."
+        log_failure_msg "No valid configuration file found in $CONFIG_DIR"
         exit 1
     fi
 }
@@ -64,24 +64,24 @@ do_start() {
 
     # 检查是否已经在运行
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        echo "$DESC is already running."
-        return 1 # 已在运行，返回非零值
+        log_warning_msg "$DESC is already running with PID $(cat "$PIDFILE")"
+        return 1
     fi
 
     # 获取启动参数
     DAEMON_ARGS=$(get_daemon_args)
 
     # 启动守护进程
-    log_progress_msg "Starting $DESC process as user '$USER'..."
+    log_daemon_msg "Starting $DESC" "as user '$USER'"
     start-stop-daemon --start --quiet --pidfile "$PIDFILE" --make-pidfile \
         --background --exec "$DAEMON" --chuid "$USER" -- $DAEMON_ARGS > /dev/null 2>&1
     RETVAL=$?
 
     if [ $RETVAL -eq 0 ]; then
-        log_success_msg "$DESC started successfully as user '$USER'."
+        log_end_msg 0
         return 0
     else
-        log_failure_msg "Failed to start $DESC (exit code $RETVAL)."
+        log_end_msg 1
         return 1
     fi
 }
@@ -90,12 +90,12 @@ do_start() {
 do_stop() {
     # 检查是否在运行
     if [ ! -f "$PIDFILE" ] || ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        echo "$DESC is not running."
-        return 1 # 未运行，返回非零值
+        log_warning_msg "$DESC is not running"
+        return 1
     fi
 
     # 停止守护进程
-    log_progress_msg "Stopping $DESC process..."
+    log_daemon_msg "Stopping $DESC process"
     start-stop-daemon --stop --quiet --retry=TERM/15/KILL/5 --pidfile "$PIDFILE"
     STOP_RETVAL=$?
 
@@ -103,10 +103,10 @@ do_stop() {
     rm -f "$PIDFILE"
 
     if [ $STOP_RETVAL -eq 0 ]; then
-        log_success_msg "$DESC stopped successfully."
+        log_end_msg 0
         return 0
     else
-        log_failure_msg "Failed to stop $DESC (exit code $STOP_RETVAL)."
+        log_end_msg 1
         return 1
     fi
 }
@@ -116,14 +116,14 @@ do_status() {
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
         if ps -p "$PID" > /dev/null 2>&1 && grep -q "$DAEMON" "/proc/$PID/cmdline"; then
-            echo "$DESC is running with PID $PID."
+            log_success_msg "$DESC is running with PID $PID"
             return 0
         else
-            echo "$DESC is dead but PID file exists (PID: $PID)."
+            log_warning_msg "$DESC is dead but PID file exists (PID: $PID)"
             return 1
         fi
     else
-        echo "$DESC is not running."
+        log_warning_msg "$DESC is not running"
         return 3
     fi
 }
@@ -131,33 +131,19 @@ do_status() {
 ### Main logic ###
 case "$1" in
     start)
-        log_daemon_msg "Starting $DESC ($NAME)..."
         do_start
-        case "$?" in
-            0) log_end_msg 0 ;; # 启动成功
-            1) log_end_msg 1 ;; # 启动失败或已在运行
-        esac
         ;;
     stop)
-        log_daemon_msg "Stopping $DESC ($NAME)..."
         do_stop
-        case "$?" in
-            0) log_end_msg 0 ;; # 停止成功
-            1) log_end_msg 1 ;; # 停止失败或未运行
-        esac
         ;;
     status)
         do_status
         ;;
     restart|force-reload)
-        log_daemon_msg "Restarting $DESC ($NAME)..."
+        log_daemon_msg "Restarting $DESC"
         do_stop
         sleep 1
         do_start
-        case "$?" in
-            0) log_end_msg 0 ;; # 重启成功
-            1) log_end_msg 1 ;; # 重启失败
-        esac
         ;;
     *)
         echo "Usage: $SCRIPTNAME {start|stop|status|restart}" >&2
@@ -167,7 +153,6 @@ esac
 
 exit 0
 ```
-
 ---
 
 ### **主要修改点**
