@@ -10,47 +10,36 @@
 #!/bin/sh
 
 ### BEGIN INIT INFO
-# Provides:          v2ray
+# Provides:          xray
 # Required-Start:    $local_fs $network
 # Required-Stop:     $local_fs $network
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Short-Description: Start/stop v2ray daemon
-# Description:       Manages the v2ray daemon. Relies on internal capabilities for setup/cleanup.
+# Short-Description: Start/stop xray daemon
+# Description:       Manages the xray daemon. Relies on internal capabilities for setup/cleanup.
 # WARNING:           Running network services as root poses a security risk.
 ### END INIT INFO
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
-DESC="V2Ray Daemon"                      # 服务描述
-NAME=v2ray                               # 基础服务名
-DAEMON=/usr/local/bin/v2ray              # v2ray 程序路径
-SCRIPTNAME=/etc/init.d/$NAME             # 本脚本的路径
-USER=netadm                              # 运行 V2Ray 的用户
+DESC="xray daemon"                   # 服务描述
+NAME=xray                            # 基础服务名
+DAEMON=/usr/local/bin/xray           # xray 程序路径
+SCRIPTNAME=/etc/init.d/$NAME         # 本脚本的路径
 
-CONFIG_DIR="/usr/local/etc/v2ray"        # 配置文件目录
-RUN_BASE_DIR=/var/run/v2ray              # PID 文件基础目录
-PIDFILE="$RUN_BASE_DIR/$NAME.pid"        # PID 文件路径
+CONFIG_FILE="/usr/local/etc/xray/config.json" # 配置文件路径
+RUN_BASE_DIR=/var/run/xray           # PID 文件基础目录
+PIDFILE="$RUN_BASE_DIR/$NAME.pid"    # PID 文件路径
+USER=netadm                          # 运行服务的用户
+
+# xray 启动参数 (使用 -c 指定配置文件)
+DAEMON_ARGS="run -c $CONFIG_FILE"
 
 # Load LSB function library
 . /lib/lsb/init-functions
 
-# Function to determine the startup command based on configuration files
-get_daemon_args() {
-    if [ -r "$CONFIG_DIR/config.json" ]; then
-        echo "run -c $CONFIG_DIR/config.json"
-    elif [ -r "$CONFIG_DIR/config.v5.json" ]; then
-        echo "run -c $CONFIG_DIR/config.v5.json --format jsonv5"
-    elif [ -r "$CONFIG_DIR/config.v5.jsonc" ]; then
-        echo "run -c $CONFIG_DIR/config.v5.jsonc --format jsonv5"
-    else
-        log_failure_msg "No valid configuration file found in $CONFIG_DIR"
-        exit 1
-    fi
-}
-
 # Check prerequisites
 test -x "$DAEMON" || { log_failure_msg "$DAEMON not found or not executable"; exit 1; }
-test -d "$CONFIG_DIR" || { log_failure_msg "Config directory $CONFIG_DIR not found or not readable"; exit 1; }
+test -r "$CONFIG_FILE" || { log_failure_msg "Config file $CONFIG_FILE not found or not readable"; exit 1; }
 
 # Function to start the service
 do_start() {
@@ -59,29 +48,24 @@ do_start() {
         mkdir -p "$RUN_BASE_DIR" || { log_failure_msg "Failed to create $RUN_BASE_DIR"; return 1; }
     fi
 
-    # 确保运行目录对指定用户可写
-    chown "$USER" "$RUN_BASE_DIR" || { log_failure_msg "Failed to set ownership of $RUN_BASE_DIR to $USER"; return 1; }
-
     # 检查是否已经在运行
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        log_warning_msg "$DESC is already running with PID $(cat "$PIDFILE")"
-        return 1
+        echo "$DESC is already running with PID $(cat "$PIDFILE")"
+        return 1 # 已在运行，返回非零值
     fi
 
-    # 获取启动参数
-    DAEMON_ARGS=$(get_daemon_args)
-
     # 启动守护进程
-    log_daemon_msg "Starting $DESC" "as user '$USER'"
+    echo -n "Starting $DESC process as user $USER... "
     start-stop-daemon --start --quiet --pidfile "$PIDFILE" --make-pidfile \
-        --background --exec "$DAEMON" --chuid "$USER" -- $DAEMON_ARGS > /dev/null 2>&1
+        --background --chuid "$USER" --exec "$DAEMON" -- $DAEMON_ARGS > /dev/null 2>&1
     RETVAL=$?
 
     if [ $RETVAL -eq 0 ]; then
-        log_end_msg 0
+        echo "successfully"
         return 0
     else
-        log_end_msg 1
+        echo "failed"
+        log_failure_msg "Failed to start $DESC"
         return 1
     fi
 }
@@ -90,12 +74,12 @@ do_start() {
 do_stop() {
     # 检查是否在运行
     if [ ! -f "$PIDFILE" ] || ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-        log_warning_msg "$DESC is not running"
-        return 1
+        echo "$DESC is not running"
+        return 1 # 未运行，返回非零值
     fi
 
     # 停止守护进程
-    log_daemon_msg "Stopping $DESC process"
+    echo -n "Stopping $DESC process... "
     start-stop-daemon --stop --quiet --retry=TERM/15/KILL/5 --pidfile "$PIDFILE"
     STOP_RETVAL=$?
 
@@ -103,10 +87,11 @@ do_stop() {
     rm -f "$PIDFILE"
 
     if [ $STOP_RETVAL -eq 0 ]; then
-        log_end_msg 0
+        echo "successfully"
         return 0
     else
-        log_end_msg 1
+        echo "failed"
+        log_failure_msg "Failed to stop $DESC"
         return 1
     fi
 }
@@ -116,14 +101,14 @@ do_status() {
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
         if ps -p "$PID" > /dev/null 2>&1 && grep -q "$DAEMON" "/proc/$PID/cmdline"; then
-            log_success_msg "$DESC is running with PID $PID"
+            echo "$DESC is running with PID $PID"
             return 0
         else
-            log_warning_msg "$DESC is dead but PID file exists (PID: $PID)"
+            echo "$DESC is dead but PID file exists (PID: $PID)"
             return 1
         fi
     else
-        log_warning_msg "$DESC is not running"
+        echo "$DESC is not running"
         return 3
     fi
 }
@@ -140,7 +125,7 @@ case "$1" in
         do_status
         ;;
     restart|force-reload)
-        log_daemon_msg "Restarting $DESC"
+        echo "Restarting $DESC..."
         do_stop
         sleep 1
         do_start
